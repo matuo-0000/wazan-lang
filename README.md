@@ -12,9 +12,9 @@ REPL（対話実行モード）とファイル実行モードを搭載
 クリーン: make clean 実行方法
 
 ファイルスクリプトを実行
-./miyabizan examples/hello.wz 2. 対話モード（REPL）
+./wazan examples/hello.wz 2. 対話モード（REPL）
 
-./miyabizan
+./wazan
 
 数 x は 三 と定む。 申す x 3 終わり 文法例 変数定義・計算
 
