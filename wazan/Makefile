@@ -15,6 +15,10 @@ $(TARGET): $(SRC)
 
 clean:
 	rm -f $(TARGET)
+	rm -f src/*.o
+	rm -f include/*.gch
+	sudo rm -f /usr/local/bin/$(TARGET) 2>/dev/null || true
+	@echo "Cleaned build files and old binary."
 
 install: $(TARGET)
 	mkdir -p $(PREFIX)/bin
