@@ -6,10 +6,13 @@ C 言語で書かれたインタプリタで実行できる言語です。
 簡単な関数定義（術）に対応
 REPL（対話実行モード）とファイル実行モードを搭載
 ビルド方法
-ビルド make インストール（任意）: sudo make install アンインストール: sudo make uninstall クリーン: make clean 実行方法
+ビルド make
+インストール（任意）: sudo make install 
+アンインストール: sudo make uninstall 
+クリーン: make clean 実行方法
 
 ファイルスクリプトを実行
-./miyabizan examples/hello.miya 2. 対話モード（REPL）
+./miyabizan examples/hello.wz 2. 対話モード（REPL）
 
 ./miyabizan
 
