@@ -12,7 +12,9 @@ typedef enum {
     AST_LOOP,          // いざ
     AST_BINARY_OP,     // 二項演算
     AST_NUMBER,        // 数値
-    AST_IDENTIFIER     // 識別子
+    AST_IDENTIFIER,    // 識別子
+    AST_ARRAY_DECL,    // 配列宣言
+    AST_ARRAY_ACCESS   // 配列アクセス
 } ASTNodeType;
 
 typedef struct ASTNode {
@@ -27,6 +29,9 @@ typedef struct ASTNode {
     char params[2][64];
     struct ASTNode *args[2];
     char body[256];
+    int arraySize;
+    struct ASTNode *arrayElements[100];
+    struct ASTNode *index;
 } ASTNode;
 
 typedef struct {

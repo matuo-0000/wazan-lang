@@ -5,10 +5,14 @@
 
 #define MAX_VARIABLES 256
 #define MAX_FUNCTIONS 128
+#define MAX_ARRAY_SIZE 100
 
 typedef struct {
     char name[64];
     int value;
+    int isArray;
+    int arraySize;
+    int arrayValues[MAX_ARRAY_SIZE];
 } Variable;
 
 typedef struct {

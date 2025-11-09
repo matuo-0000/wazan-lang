@@ -1,0 +1,10 @@
+申す「配列と計算のテスト」
+列 prices は 百、二百、三百、五百、千 と定む。
+申す prices の 一番目
+申す prices の 五番目
+
+数 a は prices の 二番目 と定む。
+申す a
+
+数 total は prices の 一番目 と prices の 二番目 の　和 と定む。
+申す total

@@ -31,9 +31,42 @@ static void set_variable(Interpreter *interp, const char *name, int value) {
         if (interp->varCount < MAX_VARIABLES) {
             strcpy(interp->variables[interp->varCount].name, name);
             interp->variables[interp->varCount].value = value;
+            interp->variables[interp->varCount].isArray = 0;
+            interp->variables[interp->varCount].arraySize = 0;
             interp->varCount++;
         }
     }
+}
+
+static void set_array(Interpreter *interp, const char *name, int size, int *values) {
+    int idx = find_variable(interp, name);
+    if (idx >= 0) {
+        interp->variables[idx].isArray = 1;
+        interp->variables[idx].arraySize = size;
+        for (int i = 0; i < size && i < MAX_ARRAY_SIZE; i++) {
+            interp->variables[idx].arrayValues[i] = values[i];
+        }
+    } else {
+        if (interp->varCount < MAX_VARIABLES) {
+            strcpy(interp->variables[interp->varCount].name, name);
+            interp->variables[interp->varCount].isArray = 1;
+            interp->variables[interp->varCount].arraySize = size;
+            for (int i = 0; i < size && i < MAX_ARRAY_SIZE; i++) {
+                interp->variables[interp->varCount].arrayValues[i] = values[i];
+            }
+            interp->varCount++;
+        }
+    }
+}
+
+static int get_array_element(Interpreter *interp, const char *name, int index) {
+    int idx = find_variable(interp, name);
+    if (idx >= 0 && interp->variables[idx].isArray) {
+        if (index >= 0 && index < interp->variables[idx].arraySize) {
+            return interp->variables[idx].arrayValues[index];
+        }
+    }
+    return 0;
 }
 
 static int get_variable(Interpreter *interp, const char *name) {
@@ -80,6 +113,11 @@ static int evaluate_expression(Interpreter *interp, ASTNode *node) {
             
         case AST_IDENTIFIER:
             return get_variable(interp, node->name);
+            
+        case AST_ARRAY_ACCESS: {
+            int index = evaluate_expression(interp, node->index);
+            return get_array_element(interp, node->name, index - 1); // 1-based index
+        }
             
         case AST_BINARY_OP: {
             int left = evaluate_expression(interp, node->left);
@@ -151,6 +189,15 @@ int interpreter_execute(Interpreter *interp, ASTNode *node) {
             break;
         }
         
+        case AST_ARRAY_DECL: {
+            int values[MAX_ARRAY_SIZE];
+            for (int i = 0; i < node->arraySize; i++) {
+                values[i] = evaluate_expression(interp, node->arrayElements[i]);
+            }
+            set_array(interp, node->name, node->arraySize, values);
+            break;
+        }
+        
         case AST_FUNC_DECL: {
             define_function(interp, node->name, 
                           node->params[0], node->params[1], 
@@ -162,6 +209,10 @@ int interpreter_execute(Interpreter *interp, ASTNode *node) {
             if (node->right && node->right->type == AST_IDENTIFIER) {
                 // 文字列リテラル
                 printf("%s\n", node->right->name);
+            } else if (node->right && node->right->type == AST_ARRAY_ACCESS) {
+                // 配列アクセス
+                int value = evaluate_expression(interp, node->right);
+                printf("%d\n", value);
             } else if (strlen(node->name) > 0) {
                 // 変数
                 int value = get_variable(interp, node->name);
@@ -233,6 +284,24 @@ void interpreter_run_file(Interpreter *interp, const char *filename) {
         line[strcspn(line, "\r")] = '\0';
         
         if (strlen(line) == 0) continue;
+        
+        // 全角スペースを半角スペースに変換
+        char converted[512];
+        int j = 0;
+        for (int i = 0; line[i] && j < 510; i++) {
+            // 全角スペース（UTF-8: 0xE38080）を検出
+            if (i + 2 < (int)strlen(line) &&
+                (unsigned char)line[i] == 0xE3 &&
+                (unsigned char)line[i + 1] == 0x80 &&
+                (unsigned char)line[i + 2] == 0x80) {
+                converted[j++] = ' '; // 半角スペースに変換
+                i += 2; // 3バイト分進める（forループで+1されるので+2）
+            } else {
+                converted[j++] = line[i];
+            }
+        }
+        converted[j] = '\0';
+        strcpy(line, converted);
         
         // 字句解析
         Lexer *lexer = lexer_create(line);

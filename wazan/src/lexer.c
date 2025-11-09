@@ -4,7 +4,8 @@
 #include <ctype.h>
 #include "../include/lexer.h"
 
-int kanji_to_int(const char *str) {
+// 基本的な漢数字を数値に変換
+static int get_basic_kanji(const char *str) {
     if (strcmp(str, "零") == 0) return 0;
     if (strcmp(str, "一") == 0) return 1;
     if (strcmp(str, "二") == 0) return 2;
@@ -15,12 +16,69 @@ int kanji_to_int(const char *str) {
     if (strcmp(str, "七") == 0) return 7;
     if (strcmp(str, "八") == 0) return 8;
     if (strcmp(str, "九") == 0) return 9;
+    return -1;
+}
+
+// 位を取得
+static int get_unit_value(const char *str) {
     if (strcmp(str, "十") == 0) return 10;
+    if (strcmp(str, "百") == 0) return 100;
+    if (strcmp(str, "千") == 0) return 1000;
+    if (strcmp(str, "万") == 0) return 10000;
+    if (strcmp(str, "億") == 0) return 100000000;
+    return -1;
+}
+
+// 漢数字を整数に変換（億まで対応）
+int kanji_to_int(const char *str) {
+    // 単純な一桁の数字
+    int basic = get_basic_kanji(str);
+    if (basic >= 0) return basic;
+    
+    // 単純な位
+    int unit = get_unit_value(str);
+    if (unit >= 0) return unit;
+    
+    // 複合数字の解析（例：二十、三百、五千）
+    // UTF-8で3バイト×2文字 = 6バイト程度
+    size_t len = strlen(str);
+    
+    // 二十、三十などの解析
+    if (len >= 6) {
+        // 最初の3バイトを取得（一文字目）
+        char first[4] = {str[0], str[1], str[2], '\0'};
+        int firstNum = get_basic_kanji(first);
+        
+        // 次の3バイトを取得（二文字目）
+        char second[4] = {str[3], str[4], str[5], '\0'};
+        int secondUnit = get_unit_value(second);
+        
+        if (firstNum > 0 && secondUnit > 0) {
+            return firstNum * secondUnit;
+        }
+    }
+    
     return -1;
 }
 
 int is_kanji_number(const char *str) {
-    return kanji_to_int(str) >= 0;
+    // 基本数字チェック
+    if (get_basic_kanji(str) >= 0) return 1;
+    
+    // 位のチェック
+    if (get_unit_value(str) >= 0) return 1;
+    
+    // 複合数字のチェック（二十、三百など）
+    size_t len = strlen(str);
+    if (len >= 6) {
+        char first[4] = {str[0], str[1], str[2], '\0'};
+        char second[4] = {str[3], str[4], str[5], '\0'};
+        if (get_basic_kanji(first) > 0 && get_unit_value(second) > 0) {
+            return 1;
+        }
+    }
+    
+    return 0;
 }
 
 Lexer* lexer_create(const char *source) {
@@ -39,9 +97,21 @@ void lexer_free(Lexer *lexer) {
 }
 
 static void skip_whitespace(Lexer *lexer) {
-    while (lexer->position < lexer->length && 
-           isspace((unsigned char)lexer->source[lexer->position])) {
-        lexer->position++;
+    while (lexer->position < lexer->length) {
+        // 半角スペース
+        if (isspace((unsigned char)lexer->source[lexer->position])) {
+            lexer->position++;
+        }
+        // 全角スペース（UTF-8: 0xE38080）
+        else if (lexer->position + 2 < lexer->length &&
+                 (unsigned char)lexer->source[lexer->position] == 0xE3 &&
+                 (unsigned char)lexer->source[lexer->position + 1] == 0x80 &&
+                 (unsigned char)lexer->source[lexer->position + 2] == 0x80) {
+            lexer->position += 3;
+        }
+        else {
+            break;
+        }
     }
 }
 
@@ -123,15 +193,21 @@ Token lexer_next_token(Lexer *lexer) {
             
             // 区切り文字チェック
             if (lexer->position < lexer->length) {
-                unsigned char next = lexer->source[lexer->position];
-                if (isspace(next) || next == '\xe3' || 
+                unsigned char next = (unsigned char)lexer->source[lexer->position];
+                if (isspace(next) || next == 0xE3 || 
                     next == '(' || next == ')') {
                     break;
                 }
                 // 、のチェック（UTF-8: 0xE38081）
                 if (next == 0xE3 && lexer->position + 2 < lexer->length &&
-                    lexer->source[lexer->position + 1] == 0x80 &&
-                    lexer->source[lexer->position + 2] == 0x81) {
+                    (unsigned char)lexer->source[lexer->position + 1] == 0x80 &&
+                    (unsigned char)lexer->source[lexer->position + 2] == 0x81) {
+                    break;
+                }
+                // 全角スペースのチェック（UTF-8: 0xE38080）
+                if (next == 0xE3 && lexer->position + 2 < lexer->length &&
+                    (unsigned char)lexer->source[lexer->position + 1] == 0x80 &&
+                    (unsigned char)lexer->source[lexer->position + 2] == 0x80) {
                     break;
                 }
             }
@@ -146,7 +222,8 @@ Token lexer_next_token(Lexer *lexer) {
             strcmp(token.value, "術") == 0 || strcmp(token.value, "もし") == 0 ||
             strcmp(token.value, "いざ") == 0 || strcmp(token.value, "は") == 0 ||
             strcmp(token.value, "と") == 0 || strcmp(token.value, "の") == 0 ||
-            strcmp(token.value, "を") == 0 || strcmp(token.value, "定む") == 0) {
+            strcmp(token.value, "を") == 0 || strcmp(token.value, "定む") == 0 ||
+            strcmp(token.value, "列") == 0) {
             token.type = TOKEN_KEYWORD;
         }
         // 演算子チェック

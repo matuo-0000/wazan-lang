@@ -25,6 +25,10 @@ void ast_free(ASTNode *node) {
     ast_free(node->elseBranch);
     ast_free(node->args[0]);
     ast_free(node->args[1]);
+    ast_free(node->index);
+    for (int i = 0; i < node->arraySize && i < 100; i++) {
+        ast_free(node->arrayElements[i]);
+    }
     free(node);
 }
 
@@ -34,23 +38,144 @@ static ASTNode* create_node(ASTNodeType type) {
     return node;
 }
 
-// 簡易パーサー：行全体を解析
+// 簡易パーサー：元のソースを直接使用
 ASTNode* parser_parse_line(Parser *parser) {
-    char line[512];
-    int pos = 0;
-    
-    // 行全体を文字列として取得
-    while (parser->currentToken.type != TOKEN_EOF) {
-        if (strlen(parser->currentToken.value) > 0) {
-            if (pos > 0) line[pos++] = ' ';
-            strcpy(&line[pos], parser->currentToken.value);
-            pos += strlen(parser->currentToken.value);
-        }
-        parser->currentToken = lexer_next_token(parser->lexer);
-    }
-    line[pos] = '\0';
+    // 元のソースを直接使用
+    const char *line = parser->lexer->source;
     
     if (strlen(line) == 0) return NULL;
+    
+    // 配列宣言: 列 arr は 一、二、三、四、五 と定む。
+    if (strstr(line, "列 ") && strstr(line, "は") && strstr(line, "、")) {
+        ASTNode *node = create_node(AST_ARRAY_DECL);
+        
+        char varName[64] = {0};
+        // "列 " の後から "は" の前まで取得
+        char *start = strstr(line, "列 ") + strlen("列 ");
+        char *hasPosArray = strstr(line, "は");
+        if (hasPosArray && start < hasPosArray) {
+            int i = 0;
+            while (start < hasPosArray && i < 63) {
+                if (*start != ' ') {
+                    varName[i++] = *start;
+                }
+                start++;
+            }
+            varName[i] = '\0';
+        }
+        strcpy(node->name, varName);
+        
+        // "は " の後から要素を取得
+        if (hasPosArray) {
+            char *elemStart = hasPosArray + 4; // "は " の後（UTF-8）
+            while (*elemStart == ' ') elemStart++;
+            
+            // 要素を解析
+            node->arraySize = 0;
+            char *current = elemStart;
+            char element[64];
+            int elemIdx = 0;
+            
+            while (*current && node->arraySize < 100) {
+                // 、または「と定む」まで読む
+                if (strstr(current, "、") == current) {
+                    // 要素を保存
+                    element[elemIdx] = '\0';
+                    if (elemIdx > 0) {
+                        node->arrayElements[node->arraySize] = create_node(AST_NUMBER);
+                        if (is_kanji_number(element)) {
+                            node->arrayElements[node->arraySize]->value = kanji_to_int(element);
+                        } else {
+                            node->arrayElements[node->arraySize]->type = AST_IDENTIFIER;
+                            strcpy(node->arrayElements[node->arraySize]->name, element);
+                        }
+                        node->arraySize++;
+                    }
+                    current += 3; // UTF-8の、は3バイト
+                    elemIdx = 0;
+                    while (*current == ' ') current++;
+                } else if (strstr(current, "と定む") == current) {
+                    // 最後の要素を保存
+                    element[elemIdx] = '\0';
+                    if (elemIdx > 0) {
+                        node->arrayElements[node->arraySize] = create_node(AST_NUMBER);
+                        if (is_kanji_number(element)) {
+                            node->arrayElements[node->arraySize]->value = kanji_to_int(element);
+                        } else {
+                            node->arrayElements[node->arraySize]->type = AST_IDENTIFIER;
+                            strcpy(node->arrayElements[node->arraySize]->name, element);
+                        }
+                        node->arraySize++;
+                    }
+                    break;
+                } else {
+                    if (*current != ' ' && elemIdx < 63) {
+                        element[elemIdx++] = *current;
+                    }
+                    current++;
+                }
+            }
+        }
+        
+        return node;
+    }
+    
+    // 配列アクセス: 申す arr の 二番目
+    if (strstr(line, "の") && strstr(line, "番目")) {
+        char varName[64], indexStr[64];
+        char *noPos = strstr(line, "の ");
+        char *banPos = strstr(line, "番目");
+        
+        if (noPos && banPos && banPos > noPos) {
+            // 変数名を取得
+            int nameLen = noPos - line;
+            if (nameLen > 0 && nameLen < 63) {
+                // "申す " の後から変数名を取得
+                char *start = strstr(line, "申す ");
+                if (start) {
+                    start += strlen("申す ");
+                    while (*start == ' ') start++;
+                    
+                    int i = 0;
+                    while (start < noPos && i < 63) {
+                        if (*start != ' ') {
+                            varName[i++] = *start;
+                        }
+                        start++;
+                    }
+                    varName[i] = '\0';
+                    
+                    // インデックスを取得
+                    char *idxStart = noPos + 3; // "の " の後
+                    while (*idxStart == ' ') idxStart++;
+                    
+                    i = 0;
+                    while (idxStart < banPos && i < 63) {
+                        if (*idxStart != ' ') {
+                            indexStr[i++] = *idxStart;
+                        }
+                        idxStart++;
+                    }
+                    indexStr[i] = '\0';
+                    
+                    // 配列アクセスノードを作成
+                    ASTNode *node = create_node(AST_PRINT);
+                    node->right = create_node(AST_ARRAY_ACCESS);
+                    strcpy(node->right->name, varName);
+                    
+                    node->right->index = create_node(AST_NUMBER);
+                    if (is_kanji_number(indexStr)) {
+                        node->right->index->value = kanji_to_int(indexStr);
+                    } else {
+                        node->right->index->type = AST_IDENTIFIER;
+                        strcpy(node->right->index->name, indexStr);
+                    }
+                    
+                    return node;
+                }
+            }
+        }
+    }
     
     // 変数宣言: 数 x は 二 と 三 の和 と定む
     if (strstr(line, "数") && strstr(line, "は")) {
@@ -156,30 +281,243 @@ ASTNode* parser_parse_line(Parser *parser) {
         }
         
         // 二項演算: 数 x は 二 と 三 の和 と定む
-        if (sscanf(line, "数 %s は %s と %s の %s", varName, v1, v2, op) == 4) {
-            strcpy(node->name, varName);
+        // または: 数 total は prices の 一番目 と prices の 二番目 の和 と定む
+        // 演算子の「の」を探す（最後の「の」）
+        char *lastNoPos = NULL;
+        char *searchPos = line;
+        while ((searchPos = strstr(searchPos, "の")) != NULL) {
+            lastNoPos = searchPos;
+            searchPos += 3; // UTF-8の「の」は3バイト
+        }
+        
+        // 「と定む」で終わる場合は配列アクセスの代入なので、スキップ
+        if (lastNoPos && !strstr(line, "番目 と定む")) {
+            // 演算子を取得（最後の「の」の後）
+            char *opStart = lastNoPos + 3; // 「の」の後
+            while (*opStart == ' ') opStart++;
             
-            // 二項演算ノード作成
-            node->right = create_node(AST_BINARY_OP);
-            strcpy(node->right->name, op);
-            
-            // 左オペランド
-            node->right->left = create_node(AST_IDENTIFIER);
-            strcpy(node->right->left->name, v1);
-            if (is_kanji_number(v1)) {
-                node->right->left->type = AST_NUMBER;
-                node->right->left->value = kanji_to_int(v1);
+            char opStr[64] = {0};
+            int i = 0;
+            while (opStart[i] && opStart[i] != ' ' && i < 63) {
+                opStr[i] = opStart[i];
+                i++;
             }
+            opStr[i] = '\0';
             
-            // 右オペランド
-            node->right->right = create_node(AST_IDENTIFIER);
-            strcpy(node->right->right->name, v2);
-            if (is_kanji_number(v2)) {
-                node->right->right->type = AST_NUMBER;
-                node->right->right->value = kanji_to_int(v2);
+            // 演算子が有効かチェック
+            if (strcmp(opStr, "和") == 0 || strcmp(opStr, "差") == 0 ||
+                strcmp(opStr, "積") == 0 || strcmp(opStr, "商") == 0) {
+                
+                // 変数名を取得
+                sscanf(line, "数 %s", varName);
+                strcpy(node->name, varName);
+                
+                // 二項演算ノード作成
+                node->right = create_node(AST_BINARY_OP);
+                strcpy(node->right->name, opStr);
+                
+                // 「は」と「と」の位置を取得
+                char *hasPos = strstr(line, "は");
+                
+                // 「と」を探す（演算子の「の」の前にある「と」）
+                char *toPos = NULL;
+                searchPos = hasPos;
+                while (searchPos && searchPos < lastNoPos) {
+                    char *nextTo = strstr(searchPos, "と");
+                    if (nextTo && nextTo < lastNoPos) {
+                        toPos = nextTo;
+                        searchPos = nextTo + 3; // UTF-8の「と」は3バイト
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (!toPos) {
+                    // 「と」が見つからない場合は、単純な形式
+                    return node;
+                }
+                
+                // 左オペランドを解析（「は」の後から「と」の前まで）
+                char *leftStart = hasPos + 3; // 「は」の後
+                while (*leftStart == ' ') leftStart++;
+                
+                // 左オペランドが配列アクセスかチェック
+                if (strstr(leftStart, "の") && strstr(leftStart, "番目")) {
+                    char leftArray[64] = {0}, leftIndex[64] = {0};
+                    char *leftNoPos = strstr(leftStart, "の");
+                    if (leftNoPos && leftNoPos < toPos) {
+                        // 配列名を取得
+                        i = 0;
+                        while (leftStart < leftNoPos && i < 63) {
+                            if (*leftStart != ' ') {
+                                leftArray[i++] = *leftStart;
+                            }
+                            leftStart++;
+                        }
+                        leftArray[i] = '\0';
+                        
+                        // インデックスを取得
+                        char *leftIndexStart = leftNoPos + 3;
+                        while (*leftIndexStart == ' ') leftIndexStart++;
+                        char *leftBanPos = strstr(leftIndexStart, "番目");
+                        if (leftBanPos && leftBanPos < toPos) {
+                            i = 0;
+                            while (leftIndexStart < leftBanPos && i < 63) {
+                                if (*leftIndexStart != ' ') {
+                                    leftIndex[i++] = *leftIndexStart;
+                                }
+                                leftIndexStart++;
+                            }
+                            leftIndex[i] = '\0';
+                            
+                            node->right->left = create_node(AST_ARRAY_ACCESS);
+                            strcpy(node->right->left->name, leftArray);
+                            node->right->left->index = create_node(AST_NUMBER);
+                            if (is_kanji_number(leftIndex)) {
+                                node->right->left->index->value = kanji_to_int(leftIndex);
+                            }
+                        }
+                    }
+                } else {
+                    // 通常の変数または数値
+                    char leftVal[64] = {0};
+                    i = 0;
+                    while (leftStart < toPos && i < 63) {
+                        if (*leftStart != ' ') {
+                            leftVal[i++] = *leftStart;
+                        }
+                        leftStart++;
+                    }
+                    leftVal[i] = '\0';
+                    
+                    node->right->left = create_node(AST_IDENTIFIER);
+                    strcpy(node->right->left->name, leftVal);
+                    if (is_kanji_number(leftVal)) {
+                        node->right->left->type = AST_NUMBER;
+                        node->right->left->value = kanji_to_int(leftVal);
+                    }
+                }
+                
+                // 右オペランドを解析（「と」の後から演算子の「の」の前まで）
+                char *rightStart = toPos + 3; // 「と」の後
+                while (*rightStart == ' ') rightStart++;
+                
+                // 右オペランドが配列アクセスかチェック
+                if (strstr(rightStart, "の") && strstr(rightStart, "番目")) {
+                    char rightArray[64] = {0}, rightIndex[64] = {0};
+                    char *rightNoPos = strstr(rightStart, "の");
+                    if (rightNoPos && rightNoPos < lastNoPos) {
+                        // 配列名を取得
+                        i = 0;
+                        while (rightStart < rightNoPos && i < 63) {
+                            if (*rightStart != ' ') {
+                                rightArray[i++] = *rightStart;
+                            }
+                            rightStart++;
+                        }
+                        rightArray[i] = '\0';
+                        
+                        // インデックスを取得
+                        char *rightIndexStart = rightNoPos + 3;
+                        while (*rightIndexStart == ' ') rightIndexStart++;
+                        char *rightBanPos = strstr(rightIndexStart, "番目");
+                        if (rightBanPos && rightBanPos < lastNoPos) {
+                            i = 0;
+                            while (rightIndexStart < rightBanPos && i < 63) {
+                                if (*rightIndexStart != ' ') {
+                                    rightIndex[i++] = *rightIndexStart;
+                                }
+                                rightIndexStart++;
+                            }
+                            rightIndex[i] = '\0';
+                            
+                            node->right->right = create_node(AST_ARRAY_ACCESS);
+                            strcpy(node->right->right->name, rightArray);
+                            node->right->right->index = create_node(AST_NUMBER);
+                            if (is_kanji_number(rightIndex)) {
+                                node->right->right->index->value = kanji_to_int(rightIndex);
+                            }
+                        }
+                    }
+                } else {
+                    // 通常の変数または数値
+                    char rightVal[64] = {0};
+                    i = 0;
+                    while (rightStart < lastNoPos && i < 63) {
+                        if (*rightStart != ' ') {
+                            rightVal[i++] = *rightStart;
+                        }
+                        rightStart++;
+                    }
+                    rightVal[i] = '\0';
+                    
+                    node->right->right = create_node(AST_IDENTIFIER);
+                    strcpy(node->right->right->name, rightVal);
+                    if (is_kanji_number(rightVal)) {
+                        node->right->right->type = AST_NUMBER;
+                        node->right->right->value = kanji_to_int(rightVal);
+                    }
+                }
+                
+                return node;
             }
+        }
+        
+        // 配列アクセスを変数に代入: 数 a は prices の 二番目 と定む
+        if (strstr(line, "の") && strstr(line, "番目")) {
+            char arrayName[64];
+            // "数 varName は arrayName の" までを解析
+            char *hasPos = strstr(line, "は ");
+            char *noPos = strstr(line, " の ");
             
-            return node;
+            if (hasPos && noPos && noPos > hasPos) {
+                sscanf(line, "数 %s", varName);
+                
+                // 配列名を取得
+                char *arrayStart = hasPos + strlen("は ");
+                while (*arrayStart == ' ') arrayStart++;
+                int i = 0;
+                while (arrayStart < noPos && i < 63) {
+                    if (*arrayStart != ' ') {
+                        arrayName[i++] = *arrayStart;
+                    }
+                    arrayStart++;
+                }
+                arrayName[i] = '\0';
+                
+                // インデックスを取得（「の」の後から「番目」の前まで）
+                char *indexStart = noPos + strlen(" の ");
+                while (*indexStart == ' ') indexStart++;
+                char *banPos = strstr(indexStart, "番目");
+                
+                if (banPos) {
+                    char indexStr[64] = {0};
+                    i = 0;
+                    while (indexStart < banPos && i < 63) {
+                        if (*indexStart != ' ') {
+                            indexStr[i++] = *indexStart;
+                        }
+                        indexStart++;
+                    }
+                    indexStr[i] = '\0';
+                    
+                    strcpy(node->name, varName);
+                    
+                    // 配列アクセスノード作成
+                    node->right = create_node(AST_ARRAY_ACCESS);
+                    strcpy(node->right->name, arrayName);
+                    
+                    node->right->index = create_node(AST_NUMBER);
+                    if (is_kanji_number(indexStr)) {
+                        node->right->index->value = kanji_to_int(indexStr);
+                    } else {
+                        node->right->index->type = AST_IDENTIFIER;
+                        strcpy(node->right->index->name, indexStr);
+                    }
+                    
+                    return node;
+                }
+            }
         }
         
         // 単純代入: 数 x は 五 と定む
