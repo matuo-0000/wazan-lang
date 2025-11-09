@@ -186,6 +186,5 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-## ライセンス
-
-MIT License
+ライセンス
+©松尾
