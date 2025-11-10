@@ -31,6 +31,10 @@ static int get_unit_value(const char *str) {
 
 // 漢数字を整数に変換（億まで対応）
 int kanji_to_int(const char *str) {
+    // 真偽値チェック
+    if (strcmp(str, "真") == 0) return 1;
+    if (strcmp(str, "偽") == 0) return 0;
+    
     // 単純な一桁の数字
     int basic = get_basic_kanji(str);
     if (basic >= 0) return basic;
@@ -62,6 +66,9 @@ int kanji_to_int(const char *str) {
 }
 
 int is_kanji_number(const char *str) {
+    // 真偽値チェック
+    if (strcmp(str, "真") == 0 || strcmp(str, "偽") == 0) return 1;
+    
     // 基本数字チェック
     if (get_basic_kanji(str) >= 0) return 1;
     
@@ -217,8 +224,17 @@ Token lexer_next_token(Lexer *lexer) {
         strncpy(token.value, &lexer->source[start], len);
         token.value[len] = '\0';
         
+        // 真偽値チェック（数値として扱う）
+        if (strcmp(token.value, "真") == 0) {
+            token.type = TOKEN_NUMBER;
+            token.numValue = 1;
+        }
+        else if (strcmp(token.value, "偽") == 0) {
+            token.type = TOKEN_NUMBER;
+            token.numValue = 0;
+        }
         // キーワードチェック
-        if (strcmp(token.value, "数") == 0 || strcmp(token.value, "申す") == 0 ||
+        else if (strcmp(token.value, "数") == 0 || strcmp(token.value, "申す") == 0 ||
             strcmp(token.value, "術") == 0 || strcmp(token.value, "もし") == 0 ||
             strcmp(token.value, "いざ") == 0 || strcmp(token.value, "は") == 0 ||
             strcmp(token.value, "と") == 0 || strcmp(token.value, "の") == 0 ||
@@ -228,7 +244,9 @@ Token lexer_next_token(Lexer *lexer) {
         }
         // 演算子チェック
         else if (strcmp(token.value, "和") == 0 || strcmp(token.value, "差") == 0 ||
-                 strcmp(token.value, "積") == 0 || strcmp(token.value, "商") == 0) {
+                 strcmp(token.value, "積") == 0 || strcmp(token.value, "商") == 0 ||
+                 strcmp(token.value, "且つ") == 0 || strcmp(token.value, "又は") == 0 ||
+                 strcmp(token.value, "非ず") == 0) {
             token.type = TOKEN_OPERATOR;
         }
         // 漢数字チェック

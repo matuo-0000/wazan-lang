@@ -11,6 +11,7 @@ typedef enum {
     AST_IF,            // もし
     AST_LOOP,          // いざ
     AST_BINARY_OP,     // 二項演算
+    AST_UNARY_OP,      // 単項演算
     AST_NUMBER,        // 数値
     AST_IDENTIFIER,    // 識別子
     AST_ARRAY_DECL,    // 配列宣言

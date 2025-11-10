@@ -280,6 +280,44 @@ ASTNode* parser_parse_line(Parser *parser) {
             }
         }
         
+        // 単項演算: 数 x は y の非ず と定む
+        if (strstr(line, "の非ず")) {
+            char varName[64], operand[64];
+            sscanf(line, "数 %s", varName);
+            strcpy(node->name, varName);
+            
+            // 単項演算ノード作成
+            node->right = create_node(AST_UNARY_OP);
+            strcpy(node->right->name, "非ず");
+            
+            // オペランドを取得（「は」の後から「の非ず」の前まで）
+            char *hasPos = strstr(line, "は");
+            char *arazuPos = strstr(line, "の非ず");
+            
+            if (hasPos && arazuPos && arazuPos > hasPos) {
+                char *operandStart = hasPos + 3; // 「は」の後
+                while (*operandStart == ' ') operandStart++;
+                
+                int i = 0;
+                while (operandStart < arazuPos && i < 63) {
+                    if (*operandStart != ' ') {
+                        operand[i++] = *operandStart;
+                    }
+                    operandStart++;
+                }
+                operand[i] = '\0';
+                
+                node->right->left = create_node(AST_IDENTIFIER);
+                strcpy(node->right->left->name, operand);
+                if (is_kanji_number(operand)) {
+                    node->right->left->type = AST_NUMBER;
+                    node->right->left->value = kanji_to_int(operand);
+                }
+            }
+            
+            return node;
+        }
+        
         // 二項演算: 数 x は 二 と 三 の和 と定む
         // または: 数 total は prices の 一番目 と prices の 二番目 の和 と定む
         // 演算子の「の」を探す（最後の「の」）
@@ -306,7 +344,8 @@ ASTNode* parser_parse_line(Parser *parser) {
             
             // 演算子が有効かチェック
             if (strcmp(opStr, "和") == 0 || strcmp(opStr, "差") == 0 ||
-                strcmp(opStr, "積") == 0 || strcmp(opStr, "商") == 0) {
+                strcmp(opStr, "積") == 0 || strcmp(opStr, "商") == 0 ||
+                strcmp(opStr, "且つ") == 0 || strcmp(opStr, "又は") == 0) {
                 
                 // 変数名を取得
                 sscanf(line, "数 %s", varName);

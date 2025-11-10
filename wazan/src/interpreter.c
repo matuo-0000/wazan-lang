@@ -131,6 +131,19 @@ static int evaluate_expression(Interpreter *interp, ASTNode *node) {
                 return left * right;
             } else if (strcmp(node->name, "商") == 0) {
                 return right != 0 ? left / right : 0;
+            } else if (strcmp(node->name, "且つ") == 0) {
+                return left && right;
+            } else if (strcmp(node->name, "又は") == 0) {
+                return left || right;
+            }
+            break;
+        }
+        
+        case AST_UNARY_OP: {
+            int operand = evaluate_expression(interp, node->left);
+            
+            if (strcmp(node->name, "非ず") == 0) {
+                return !operand;
             }
             break;
         }
